@@ -10,7 +10,8 @@
     "fs:default",
     {
       "identifier": "fs:allow-app-read-recursive",
-      "allow": [{ "path": "$DESKTOP/*" }]
-    }
+      "allow": [{ "path": "$DESKTOP/*" }, { "path": "$DOWNLOAD/*" }, { "path": "$DOCUMENT/*" }]
+    },
+    "core:window:allow-set-fullscreen"
   ]
 }
