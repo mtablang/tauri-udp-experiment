@@ -12,39 +12,28 @@
   // let greetMsg = $state('');
 
   let setupMode = $state(true);
+  let showSelectImage = $state(false); // whether video or image should be shown
+  let showScreenSaverAfterQueue = $state(true); // whether screensaver or image should be shown after video queue is finished
   let broadcastAddress = $state('0.0.0.0');
   let port = $state('5001');
-  let videoDirectory = $state('Documents');
+  let filesDirectory = $state('Documents');
+  let baseDir = $state(BaseDirectory.Document);
+  // let videoDirectoryPath = $state('fms');
   let videoElement: HTMLVideoElement; // Reference to the <video> element
+  let imageElement: HTMLImageElement; // Reference to the <img> element
+
+  let videoQueue: string[] = $state([]); // Array of video titles
+  let currentIndex = $state(0);
 
   onMount(async () => {});
 
   const finishSetup = async () => {
     const id = 'unique-id';
     // await bind(id, '0.0.0.0:8080');
-    console.log(`binding to ${broadcastAddress}:${port}`);
+    console.log(`binding to ${$state.snapshot(broadcastAddress)}:${$state.snapshot(port)}`);
     await bind(id, `${broadcastAddress}:${port}`);
 
-    setupMode = false;
-
-    await listen('plugin://udp', (x) => {
-      const payloadDataJSON = String.fromCharCode(...x.payload.data);
-      console.log(`payloadDataJSON`, payloadDataJSON);
-      const payloadData = JSON.parse(payloadDataJSON)[0];
-      console.log(`payloadData`, payloadData);
-
-      if (payloadData.IsScreenSaverOn) {
-        console.log(`payloadData.Products`, payloadData.Products);
-        const videoTitle = payloadData.Products[0].ProductCode;
-        console.log(`videoTitle`, videoTitle);
-        playVideo(videoTitle);
-      }
-    });
-  };
-
-  const playVideo = async (videoTitle: string) => {
-    let baseDir = BaseDirectory.Document;
-    switch (videoDirectory) {
+    switch (filesDirectory) {
       case 'Documents':
         baseDir = BaseDirectory.Document;
         break;
@@ -55,6 +44,88 @@
         baseDir = BaseDirectory.Desktop;
         break;
     }
+
+    // await displayImage(`_select`);
+
+    setupMode = false;
+
+    await listen('plugin://udp', (x) => {
+      const payloadDataJSON = String.fromCharCode(...x.payload.data);
+      console.log(`payloadDataJSON`, payloadDataJSON);
+      const payloadData = JSON.parse(payloadDataJSON)[0];
+      console.log(`payloadData`, payloadData);
+
+      if (payloadData.AddedProduct) {
+        showSelectImage = false; // reset to false if ever it's been set as true before this
+
+        let videoTitles = [];
+        if (payloadData.Products && payloadData.Products.length > 0) {
+          console.log(`payloadData.Products`, payloadData.Products);
+
+          videoTitles = payloadData.Products.map((product) => {
+            return product.ProductCode;
+          });
+          console.log(`[listen] videoTitles`, videoTitles);
+        }
+
+        // playVideo(videoTitle);
+
+        if (payloadData.IsScreenSaverOn) {
+          console.log(`IsScreenSaverOn = true so Going to show _screensaver video after the queue`);
+          showScreenSaverAfterQueue = true;
+        } else {
+          console.log(`IsScreenSaverOn = false so Going to show _select image after the queue`);
+          showScreenSaverAfterQueue = false;
+        }
+        startVideoQueue([`_intro`, ...videoTitles, `_outro`]);
+      } else if (payloadData.IsScreenSaverOn) {
+        console.log(`showing _screensaver right away`);
+        showSelectImage = false;
+        startVideoQueue(['_screensaver']);
+      } else if (!payloadData.IsScreenSaverOn && !payloadData.AddedProduct) {
+        console.log(`showing _select image right away`);
+        displayImage(`_select`);
+        showSelectImage = true;
+      }
+    });
+  };
+
+  // Function to start playing a queue of videos
+  const startVideoQueue = async (titles: string[]) => {
+    if (!titles.length) return;
+    videoQueue = titles;
+    currentIndex = 0;
+    await playNextVideo();
+  };
+
+  const playNextVideo = async () => {
+    console.log(
+      '[playNextVideo] videoQueue and currentIndex',
+      $state.snapshot(videoQueue),
+      $state.snapshot(currentIndex)
+    );
+    if (currentIndex < videoQueue.length) {
+      const nextVideoTitle = videoQueue[currentIndex];
+      currentIndex++;
+      await playVideo(nextVideoTitle);
+    } else {
+      // Queue finished!
+      console.log(
+        'All videos in the queue have been played. Going to play _screensaver or _select'
+      );
+
+      // videoMode = false;
+      if (showScreenSaverAfterQueue) {
+        await playVideo(`_screensaver`);
+      } else {
+        showSelectImage = true;
+        await displayImage(`_select`);
+      }
+    }
+  };
+
+  const playVideo = async (videoTitle: string) => {
+    console.log(`[playVideo] Now gonna play ${videoTitle}`);
     const file = await readFile(`${videoTitle}.mp4`, {
       baseDir: baseDir,
     });
@@ -77,6 +148,27 @@
         });
     }
   };
+
+  const displayImage = async (imageTitle: string) => {
+    console.log(`[displayImage] Now gonna display image ${imageTitle}`);
+
+    const file = await readFile(`${imageTitle}.jpg`, {
+      baseDir: baseDir,
+    });
+
+    // Convert binary data to a Blob URL
+    const blob = new Blob([new Uint8Array(file)], { type: 'image/jpeg' });
+
+    console.log(`file`, file);
+    if (imageElement) {
+      console.log(`imageElement`, $state.snapshot(imageElement));
+      imageElement.src = URL.createObjectURL(blob);
+      // console.log(`imageElement.src`, imageElement.src);
+      getCurrentWindow().setFullscreen(true);
+    } else {
+      console.log(`no imageElement`);
+    }
+  };
 </script>
 
 <main class="container">
@@ -87,16 +179,23 @@
       Port <input bind:value={port} />
       <br />
       Video directory
-      <select bind:value={videoDirectory} name="pets" id="pet-select">
+      <select bind:value={filesDirectory} name="pets" id="pet-select">
         <option value="Desktop">Desktop</option>
         <option value="Documents">Documents Folder</option>
         <option value="Downloads">Downloads Folder</option>
       </select>
-
+      <br />
+      <!-- Path <input bind:value={videoDirectoryPath} /> -->
       <button onclick={finishSetup} class="finish-setup-button">Finish Setup</button>
     </div>
   {:else}
-    <video bind:this={videoElement}> </video>
+    <div class="media-player">
+      {#if !showSelectImage}
+        <video bind:this={videoElement} class="video" onended={playNextVideo}></video>
+      {:else}
+        <img bind:this={imageElement} class="image" alt="Select image" />
+      {/if}
+    </div>
   {/if}
 
   <!-- <h1>Welcome to Tauri + Svelte</h1>
@@ -148,11 +247,14 @@
 
   .container {
     margin: 0;
-    /* padding-top: 10vh; */
     display: flex;
     flex-direction: column;
     justify-content: center;
     text-align: center;
+    height: 100vh;
+    width: 100vw;
+    /* background: hotpink; */
+    background: black;
   }
 
   .setup {
@@ -160,95 +262,22 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    height: 100%;
+    background: #eee;
   }
   .finish-setup-button {
     margin-top: 40px;
     font-size: 1em;
   }
 
-  /* .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: 0.75s;
+  .media-player {
+    height: 100%;
+    width: 100%;
   }
-
-  .logo.tauri:hover {
-    filter: drop-shadow(0 0 2em #24c8db);
-  } 
-
-  .row {
-    display: flex;
-    justify-content: center;
+  video,
+  img {
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
   }
-
-  a {
-    font-weight: 500;
-    color: #646cff;
-    text-decoration: inherit;
-  }
-
-  a:hover {
-    color: #535bf2;
-  }
-
-  h1 {
-    text-align: center;
-  }
-
-  input,
-  button {
-    border-radius: 8px;
-    border: 1px solid transparent;
-    padding: 0.6em 1.2em;
-    font-size: 1em;
-    font-weight: 500;
-    font-family: inherit;
-    color: #0f0f0f;
-    background-color: #ffffff;
-    transition: border-color 0.25s;
-    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-  }
-
-  button {
-    cursor: pointer;
-  }
-
-  button:hover {
-    border-color: #396cd8;
-  }
-  button:active {
-    border-color: #396cd8;
-    background-color: #e8e8e8;
-  }
-
-  input,
-  button {
-    outline: none;
-  }
-
-  #greet-input {
-    margin-right: 5px;
-  } */
-
-  /* @media (prefers-color-scheme: dark) {
-    :root {
-      color: #f6f6f6;
-      background-color: #2f2f2f;
-    }
-
-    a:hover {
-      color: #24c8db;
-    }
-
-    input,
-    button {
-      color: #ffffff;
-      background-color: #0f0f0f98;
-    }
-    button:active {
-      background-color: #0f0f0f69;
-    }
-  } */
 </style>
