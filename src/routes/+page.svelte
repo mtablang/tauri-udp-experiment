@@ -197,46 +197,19 @@
       {/if}
     </div>
   {/if}
-
-  <!-- <h1>Welcome to Tauri + Svelte</h1>
-
-  <div class="row">
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://kit.svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
-
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet___</button>
-  </form>
-  <p>{greetMsg}</p> -->
 </main>
 
 <style>
-  /* .logo.vite:hover {
-    filter: drop-shadow(0 0 2em #747bff);
-  }
-
-  .logo.svelte-kit:hover {
-    filter: drop-shadow(0 0 2em #ff3e00);
-  } */
-
   :root {
+    background: black;
+    /* background: yellow; */
+    color: #0f0f0f;
+    overflow: hidden;
+
     font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
     font-size: 16px;
     line-height: 24px;
     font-weight: 400;
-
-    color: #0f0f0f;
-    background-color: #f6f6f6;
 
     font-synthesis: none;
     text-rendering: optimizeLegibility;
@@ -246,15 +219,14 @@
   }
 
   .container {
-    margin: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
     text-align: center;
     height: 100vh;
     width: 100vw;
-    /* background: hotpink; */
     background: black;
+    /* background: indigo; */
   }
 
   .setup {
@@ -279,5 +251,10 @@
     height: 100%;
     width: 100%;
     object-fit: contain;
+    object-position: center;
+
+    /* Remove inline element magic space to prevent overflows
+    https://courses.joshwcomeau.com/css-for-js/01-rendering-logic-1/09-flow-layout#inline-elements-have-magic-space */
+    display: block;
   }
 </style>
