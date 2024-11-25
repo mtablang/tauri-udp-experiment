@@ -25,7 +25,15 @@
   let videoQueue: string[] = $state([]); // Array of video titles
   let currentIndex = $state(0);
 
-  onMount(async () => {});
+  let video1: HTMLVideoElement | null | undefined = $state();
+  let video2: HTMLVideoElement | null | undefined = $state();
+  let currentVideo: HTMLVideoElement | null | undefined = $state();
+  let isFading = false; // Flag to prevent multiple triggers
+
+  // let showSelectScreen = false;
+  // let playingScreensaver = false;
+  // let videoQueue = [];
+  // let currentIndex = 0;
 
   const finishSetup = async () => {
     const id = 'unique-id';
@@ -100,7 +108,26 @@
     await playNextVideo();
   };
 
+  const handleTimeUpdate = () => {
+    if (!currentVideo) return;
+
+    const remainingTime = currentVideo.duration - currentVideo.currentTime;
+    console.log(`[handleTimeUpdate] remainingTime`, remainingTime);
+
+    if (remainingTime <= 0.3 && !isFading) {
+      // if (remainingTime <= 0.3) {
+      isFading = true; // Set flag to avoid repeated calls
+      console.log(`[handleTimeUpdate] Now playing next video since <= .3 second`);
+      playNextVideo();
+      // isFading = true; // Set flag to avoid repeated calls
+      // fadeOutVideo();
+    }
+  };
+
   const playNextVideo = async () => {
+    // Reset the fading flag
+    isFading = false;
+
     console.log(
       '[playNextVideo] videoQueue and currentIndex',
       $state.snapshot(videoQueue),
@@ -109,16 +136,18 @@
     if (currentIndex < videoQueue.length) {
       const nextVideoTitle = videoQueue[currentIndex];
       currentIndex++;
-      await playVideo(nextVideoTitle);
+      // await playVideo(nextVideoTitle);
+      await switchVideo(nextVideoTitle);
     } else {
       // Queue finished!
       console.log(
-        'All videos in the queue have been played. Going to play _screensaver or _select'
+        '[playNextVideo] All videos in the queue have been played. Going to play _screensaver or _select'
       );
 
       // videoMode = false;
       if (showScreenSaverAfterQueue) {
-        await playVideo(`_screensaver`);
+        await switchVideo(`_screensaver`);
+        // await switchVideo(`_intro`); // TEMP FOR QUICK VIDEO
       } else {
         showSelectImage = true;
         await displayImage(`_select`);
@@ -126,30 +155,30 @@
     }
   };
 
-  const playVideo = async (videoTitle: string) => {
-    console.log(`[playVideo] Now gonna play ${videoTitle}`);
-    const file = await readFile(`${videoTitle}.mp4`, {
-      baseDir: baseDir,
-    });
+  // const playVideo = async (videoTitle: string) => {
+  //   console.log(`[playVideo] Now gonna play ${videoTitle}`);
+  //   const file = await readFile(`${videoTitle}.mp4`, {
+  //     baseDir: baseDir,
+  //   });
 
-    // Convert binary data to a Blob URL
-    const blob = new Blob([new Uint8Array(file)], { type: 'video/mp4' });
+  //   // Convert binary data to a Blob URL
+  //   const blob = new Blob([new Uint8Array(file)], { type: 'video/mp4' });
 
-    if (videoElement) {
-      videoElement.src = URL.createObjectURL(blob);
+  //   if (videoElement) {
+  //     videoElement.src = URL.createObjectURL(blob);
 
-      console.log(`videoElement.src`, videoElement.src);
+  //     console.log(`videoElement.src`, videoElement.src);
 
-      videoElement
-        .play()
-        .catch((err) => {
-          console.error('video playback error:', err);
-        })
-        .then(() => {
-          getCurrentWindow().setFullscreen(true);
-        });
-    }
-  };
+  //     videoElement
+  //       .play()
+  //       .catch((err) => {
+  //         console.error('video playback error:', err);
+  //       })
+  //       .then(() => {
+  //         getCurrentWindow().setFullscreen(true);
+  //       });
+  //   }
+  // };
 
   const displayImage = async (imageTitle: string) => {
     console.log(`[displayImage] Now gonna display image ${imageTitle}`);
@@ -171,6 +200,72 @@
       console.log(`no imageElement`);
     }
   };
+
+  // const switchVideo = async (videoTitle: string) => {
+  //   if (!currentVideo) {
+  //     currentVideo = video1;
+  //   }
+  //   console.log(`[switchVideo], videoTitle`, videoTitle);
+  //   const file = await readFile(`${videoTitle}.mp4`, { baseDir: baseDir });
+  //   const blob = new Blob([new Uint8Array(file)], { type: 'video/mp4' });
+  //   const nextVideo = currentVideo === video1 ? video2 : video1;
+
+  //   console.log(`[switchVideo] nextVideo:`, nextVideo);
+  //   console.log(`[switchVideo] currentVideo`, currentVideo);
+  //   nextVideo!.src = URL.createObjectURL(blob);
+  //   nextVideo!.load();
+
+  //   // Start fade-in of next video
+  //   nextVideo!.classList.add('fade-in');
+  //   currentVideo!.classList.add('fade-out');
+
+  //   // Wait for fade transition
+  //   setTimeout(() => {
+  //     currentVideo!.classList.remove('fade-out');
+  //     nextVideo!.classList.remove('fade-in');
+  //     nextVideo!.classList.add('current');
+  //     currentVideo!.classList.remove('current');
+  //     currentVideo = nextVideo;
+  //     console.log(`going to switch to`, currentVideo === video1 ? 'video1' : 'video2');
+
+  //     // Start playback
+  //     currentVideo!.play().catch((err) => console.error('Playback error:', err));
+  //   }, 300);
+  // };
+
+  const switchVideo = async (videoTitle: string) => {
+    console.log(`[switchVideo]`);
+    if (!currentVideo) {
+      currentVideo = video1;
+    }
+    const file = await readFile(`${videoTitle}.mp4`, { baseDir });
+    const blob = new Blob([new Uint8Array(file)], { type: 'video/mp4' });
+    const nextVideo = currentVideo === video1 ? video2 : video1;
+
+    if (nextVideo) {
+      nextVideo!.src = URL.createObjectURL(blob);
+      nextVideo!.load();
+
+      // Apply fade-in and fade-out transitions
+      nextVideo!.classList.add('fade-in');
+      currentVideo!.classList.add('fade-out');
+
+      nextVideo!.classList.add('current');
+      currentVideo!.classList.remove('current');
+      // Start playback
+      setTimeout(() => {
+        currentVideo!.classList.remove('fade-out');
+        nextVideo!.classList.remove('fade-in');
+
+        currentVideo = nextVideo;
+        currentVideo!.play().catch((err) => console.error('Playback error:', err));
+      }, 300);
+    } else {
+      console.log(`[switchVideo] no nextVideo`);
+    }
+  };
+
+  onMount(() => {});
 </script>
 
 <main class="container">
@@ -193,7 +288,18 @@
   {:else}
     <div class="media-player">
       {#if !showSelectImage}
-        <video bind:this={videoElement} class="video" onended={playNextVideo}></video>
+        <!-- <video bind:this={videoElement} class="video" onended={playNextVideo}></video> -->
+
+        <video
+          bind:this={video1}
+          preload="auto"
+          muted
+          playsinline
+          class="current"
+          ontimeupdate={handleTimeUpdate}
+        ></video>
+        <video bind:this={video2} preload="auto" muted playsinline ontimeupdate={handleTimeUpdate}
+        ></video>
       {:else}
         <img bind:this={imageElement} class="image" alt="Select image" />
       {/if}
@@ -247,16 +353,37 @@
   .media-player {
     height: 100%;
     width: 100%;
+    position: relative;
   }
   video,
   img {
+    position: absolute;
     height: 100%;
     width: 100%;
     object-fit: contain;
     object-position: center;
+    z-index: 0; /* Default */
+    visibility: hidden; /* Hide non-current videos */
 
     /* Remove inline element magic space to prevent overflows
     https://courses.joshwcomeau.com/css-for-js/01-rendering-logic-1/09-flow-layout#inline-elements-have-magic-space */
     display: block;
+  }
+
+  .fade-in {
+    opacity: 1;
+    z-index: 2;
+    transition: opacity 0.3s linear;
+  }
+
+  .fade-out {
+    opacity: 0;
+    z-index: 1;
+    transition: opacity 0.3s linear;
+  }
+
+  .current {
+    z-index: 3; /* Always on top */
+    visibility: visible; /* Make current video visible */
   }
 </style>
