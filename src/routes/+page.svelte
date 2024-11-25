@@ -80,6 +80,7 @@
         startVideoQueue([`_intro`, ...videoTitles, `_outro`]);
       } else if (payloadData.IsScreenSaverOn) {
         console.log(`showing _screensaver right away`);
+        showScreenSaverAfterQueue = true;
         showSelectImage = false;
         startVideoQueue(['_screensaver']);
       } else if (!payloadData.IsScreenSaverOn && !payloadData.AddedProduct) {
@@ -92,6 +93,7 @@
 
   // Function to start playing a queue of videos
   const startVideoQueue = async (titles: string[]) => {
+    console.log(`[startVideoQueue] titles`, titles);
     if (!titles.length) return;
     videoQueue = titles;
     currentIndex = 0;
