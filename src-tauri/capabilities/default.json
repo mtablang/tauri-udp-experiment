@@ -10,7 +10,16 @@
     "fs:default",
     {
       "identifier": "fs:allow-app-read-recursive",
-      "allow": [{ "path": "$DESKTOP/*" }, { "path": "$DOWNLOAD/*" }, { "path": "$DOCUMENT/*" }]
+      "allow": [
+        { "path": "$DESKTOP/*" },
+        { "path": "$DOWNLOAD/*" },
+        { "path": "$DOCUMENT/*" },
+        { "path": "$HOME/.giving-machine" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-app-write-recursive",
+      "allow": [{ "path": "$HOME/.giving-machine" }]
     },
     "core:window:allow-set-fullscreen"
   ]

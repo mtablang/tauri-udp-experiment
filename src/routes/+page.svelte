@@ -4,7 +4,7 @@
   import { bind, send, unbind } from '@kuyoonjo/tauri-plugin-udp';
   import { listen } from '@tauri-apps/api/event';
 
-  import { readFile, BaseDirectory } from '@tauri-apps/plugin-fs';
+  import { readFile, readTextFile, writeTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
 
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -29,17 +29,91 @@
   let timeout: number | undefined = $state();
 
   onMount(async () => {
+    // Load settings from file
+    loadPreviousSettings();
+
+    // Setup UDP listener
     finishSetup();
+
+    // Set window to full screen right away
     getCurrentWindow().setFullscreen(true);
   });
 
+  /**
+   * Read settings file saved in $HOME/.giving-machine
+   */
+  const loadPreviousSettings = async () => {
+    console.log(`[loadPreviousSettings]`);
+    const givingMachineSettingsFileContents = await readTextFile(`.giving-machine`, {
+      baseDir: BaseDirectory.Home,
+    });
+
+    console.log(givingMachineSettingsFileContents, 'givingMachineSettingsFileContents');
+
+    // Parse the contents into an object
+    const givingMachineSettings = Object.fromEntries(
+      givingMachineSettingsFileContents
+        .trim() // Remove leading/trailing whitespace
+        .split('\n') // Split into lines
+        .map((line: string) => line.split('=')) // Split each line into key and value
+    );
+
+    // Destructure the variables from the object
+    const { PORT, BROADCAST_ADDRESS, FILES_DIRECTORY } = givingMachineSettings;
+
+    if (PORT) {
+      port = PORT;
+    }
+    if (BROADCAST_ADDRESS) {
+      broadcastAddress = BROADCAST_ADDRESS;
+    }
+    if (FILES_DIRECTORY) {
+      filesDirectory = FILES_DIRECTORY;
+      switch (filesDirectory) {
+        case 'Documents':
+          baseDir = BaseDirectory.Document;
+          break;
+        case 'Downloads':
+          baseDir = BaseDirectory.Download;
+          break;
+        case 'Desktop':
+          baseDir = BaseDirectory.Desktop;
+          break;
+      }
+    }
+  };
+
+  /**
+   * Write settings file to $HOME/.giving-machine
+   */
+  const writeSettingsToFile = async () => {
+    const lines = [
+      `PORT=${port}`,
+      `ADDRESS=${broadcastAddress}`,
+      `FILES_DIRECTORY=${filesDirectory}`,
+    ];
+
+    const contents = lines.join('\n'); // Join the lines with newline characters
+
+    await writeTextFile('.giving-machine', contents, {
+      baseDir: BaseDirectory.Home,
+    });
+  };
+
+  /**
+   * Show setup page
+   */
   const showSetup = async () => {
     if (!setupMode) {
+      // Unbind the UDP listener if showing the setup mode
       await unbind('giving-machine');
       setupMode = true;
     }
   };
 
+  /**
+   *   3 consecutive clicks of the hidden box should show the setup page
+   */
   function handleBoxClick() {
     clickCount++;
     if (clickCount === 3) {
@@ -74,6 +148,8 @@
     // await displayImage(`_select`);
 
     setupMode = false;
+
+    await writeSettingsToFile();
 
     await listen('plugin://udp', (x) => {
       const payloadDataJSON = String.fromCharCode(...x.payload.data);
@@ -126,6 +202,10 @@
     await playNextVideo();
   };
 
+  /**
+   * Runs the next video in the videoQueue when the current video has ended.
+   * If the queue has finished this will show the screensaver or the select image instead.
+   */
   const playNextVideo = async () => {
     console.log(
       '[playNextVideo] videoQueue and currentIndex',
@@ -152,6 +232,10 @@
     }
   };
 
+  /**
+   * Plays the mp4 video file with filename `videoTitle` in the base directory
+   * @param videoTitle
+   */
   const playVideo = async (videoTitle: string) => {
     console.log(`[playVideo] Now gonna play ${videoTitle}`);
     const file = await readFile(`${videoTitle}.mp4`, {
@@ -177,6 +261,10 @@
     }
   };
 
+  /**
+   * Displays jpg image file with filename `imageTitle` from the base directory
+   * @param imageTitle
+   */
   const displayImage = async (imageTitle: string) => {
     console.log(`[displayImage] Now gonna display image ${imageTitle}`);
 
@@ -207,7 +295,7 @@
       Port <input bind:value={port} />
       <br />
       Video directory
-      <select bind:value={filesDirectory} name="pets" id="pet-select">
+      <select bind:value={filesDirectory} name="files-dir" id="files-dir">
         <option value="Desktop">Desktop</option>
         <option value="Documents">Documents Folder</option>
         <option value="Downloads">Downloads Folder</option>
