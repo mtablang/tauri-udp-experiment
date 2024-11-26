@@ -25,10 +25,36 @@
   let videoQueue: string[] = $state([]); // Array of video titles
   let currentIndex = $state(0);
 
-  onMount(async () => {});
+  let clickCount = $state(0);
+  let timeout: number | undefined = $state();
+
+  onMount(async () => {
+    finishSetup();
+    getCurrentWindow().setFullscreen(true);
+  });
+
+  const showSetup = async () => {
+    if (!setupMode) {
+      await unbind('giving-machine');
+      setupMode = true;
+    }
+  };
+
+  function handleBoxClick() {
+    clickCount++;
+    if (clickCount === 3) {
+      clickCount = 0;
+      showSetup();
+      console.log('Three-click event triggered!');
+    }
+
+    // Reset count after 1 second of inactivity
+    clearTimeout(timeout);
+    timeout = setTimeout(() => (clickCount = 0), 1000);
+  }
 
   const finishSetup = async () => {
-    const id = 'unique-id';
+    const id = 'giving-machine';
     // await bind(id, '0.0.0.0:8080');
     console.log(`binding to ${$state.snapshot(broadcastAddress)}:${$state.snapshot(port)}`);
     await bind(id, `${broadcastAddress}:${port}`);
@@ -199,6 +225,8 @@
       {/if}
     </div>
   {/if}
+
+  <div class="hidden-square" onclick={handleBoxClick}></div>
 </main>
 
 <style>
@@ -258,5 +286,21 @@
     /* Remove inline element magic space to prevent overflows
     https://courses.joshwcomeau.com/css-for-js/01-rendering-logic-1/09-flow-layout#inline-elements-have-magic-space */
     display: block;
+  }
+
+  .hidden-square {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    width: 100px;
+    height: 100px;
+    background-color: transparent;
+    z-index: 1000;
+    color: red;
+  }
+
+  /* Optional for testing */
+  .hidden-square:hover {
+    /* background-color: rgba(0, 0, 0, 0.1); */
   }
 </style>
