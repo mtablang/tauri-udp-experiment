@@ -15,9 +15,9 @@
   let showSelectImage = $state(false); // whether video or image should be shown
   let showScreenSaverAfterQueue = $state(true); // whether screensaver or image should be shown after video queue is finished
   let broadcastAddress = $state('0.0.0.0');
-  let port = $state('5001');
-  let filesDirectory = $state('Documents');
-  let baseDir = $state(BaseDirectory.Document);
+  let port = $state('5002');
+  let filesDirectory = $state('Downloads');
+  let baseDir = $state(BaseDirectory.Download);
   // let videoDirectoryPath = $state('fms');
   let videoElement: HTMLVideoElement; // Reference to the <video> element
   let imageElement: HTMLImageElement; // Reference to the <img> element
@@ -30,10 +30,10 @@
 
   onMount(async () => {
     // Load settings from file
-    loadPreviousSettings();
+    await loadPreviousSettings();
 
     // Setup UDP listener
-    finishSetup();
+    await finishSetup();
 
     // Set window to full screen right away
     getCurrentWindow().setFullscreen(true);
@@ -48,7 +48,10 @@
       baseDir: BaseDirectory.Home,
     });
 
-    console.log(givingMachineSettingsFileContents, 'givingMachineSettingsFileContents');
+    console.log(
+      '[loadPreviousSettings] givingMachineSettingsFileContents',
+      givingMachineSettingsFileContents
+    );
 
     // Parse the contents into an object
     const givingMachineSettings = Object.fromEntries(
@@ -130,7 +133,9 @@
   const finishSetup = async () => {
     const id = 'giving-machine';
     // await bind(id, '0.0.0.0:8080');
-    console.log(`binding to ${$state.snapshot(broadcastAddress)}:${$state.snapshot(port)}`);
+    console.log(
+      `[finishSetup] binding to ${$state.snapshot(broadcastAddress)}:${$state.snapshot(port)}`
+    );
     await bind(id, `${broadcastAddress}:${port}`);
 
     switch (filesDirectory) {

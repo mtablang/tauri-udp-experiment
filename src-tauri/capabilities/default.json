@@ -11,8 +11,8 @@
     {
       "identifier": "fs:allow-app-read-recursive",
       "allow": [
-        { "path": "$DESKTOP/*" },
         { "path": "$DOWNLOAD/*" },
+        { "path": "$DESKTOP/*" },
         { "path": "$DOCUMENT/*" },
         { "path": "$HOME/.giving-machine" }
       ]

@@ -22,6 +22,9 @@
     }
   },
   "bundle": {
+    "macOS": {
+      "signingIdentity": "Apple Distribution: Chocolate Pocket, LLC (8CHKW9ULMT)"
+    },
     "active": true,
     "targets": "all",
     "icon": [
