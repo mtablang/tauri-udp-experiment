@@ -8,9 +8,6 @@
 
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
-  // let name = $state('');
-  // let greetMsg = $state('');
-
   let setupMode = $state(true);
   let showSelectImage = $state(false); // whether video or image should be shown
   let showScreenSaverAfterQueue = $state(true); // whether screensaver or image should be shown after video queue is finished
@@ -23,10 +20,13 @@
   let imageElement: HTMLImageElement; // Reference to the <img> element
 
   let videoQueue: string[] = $state([]); // Array of video titles
-  let currentIndex = $state(0);
+  let currentVideoIndex = $state(0);
 
-  let clickCount = $state(0);
-  let timeout: number | undefined = $state();
+  let invisibleBoxClickCount = $state(0);
+  let invisibleBoxCountdown: number | undefined = $state();
+
+  let noCommandTimeout: number | undefined = $state();
+  let queuedCommand = $state();
 
   onMount(async () => {
     // Load settings from file
@@ -118,24 +118,29 @@
    *   3 consecutive clicks of the hidden box should show the setup page
    */
   function handleBoxClick() {
-    clickCount++;
-    if (clickCount === 3) {
-      clickCount = 0;
+    invisibleBoxClickCount++;
+    if (invisibleBoxClickCount === 3) {
+      invisibleBoxClickCount = 0;
       showSetup();
       console.log('Three-click event triggered!');
     }
 
     // Reset count after 1 second of inactivity
-    clearTimeout(timeout);
-    timeout = setTimeout(() => (clickCount = 0), 1000);
+    clearTimeout(invisibleBoxCountdown);
+    invisibleBoxCountdown = setTimeout(() => (invisibleBoxClickCount = 0), 1000);
   }
 
+  /**
+   * Finish the setup and start listening for UDP commands
+   */
   const finishSetup = async () => {
     const id = 'giving-machine';
-    // await bind(id, '0.0.0.0:8080');
+
     console.log(
       `[finishSetup] binding to ${$state.snapshot(broadcastAddress)}:${$state.snapshot(port)}`
     );
+
+    // await bind(id, '0.0.0.0:8080');
     await bind(id, `${broadcastAddress}:${port}`);
 
     switch (filesDirectory) {
@@ -150,52 +155,86 @@
         break;
     }
 
-    // await displayImage(`_select`);
-
     setupMode = false;
 
     await writeSettingsToFile();
 
-    await listen('plugin://udp', (x) => {
-      const payloadDataJSON = String.fromCharCode(...x.payload.data);
-      console.log(`payloadDataJSON`, payloadDataJSON);
+    // Listen to UDP commands
+    await listen('plugin://udp', (message) => {
+      clearTimeout(noCommandTimeout);
+
+      const payloadDataJSON = String.fromCharCode(...message.payload.data);
+      console.log(`[processUDPCommand] payloadDataJSON`, payloadDataJSON);
       const payloadData = JSON.parse(payloadDataJSON)[0];
-      console.log(`payloadData`, payloadData);
+      console.log(`[processUDPCommand] payloadData`, payloadData);
 
-      if (payloadData.AddedProduct) {
-        showSelectImage = false; // reset to false if ever it's been set as true before this
-
-        let videoTitles = [];
-        if (payloadData.Products && payloadData.Products.length > 0) {
-          console.log(`payloadData.Products`, payloadData.Products);
-
-          videoTitles = payloadData.Products.map((product) => {
-            return product.ProductCode;
-          });
-          console.log(`[listen] videoTitles`, videoTitles);
+      // Check if the videoQueue is currently being played first
+      // If it's empty, process the command right away
+      if (videoQueue.length == 0) {
+        console.log(
+          `[listen] The videoQueue is now empty so we will process this command right away.`,
+          payloadData
+        );
+        processUDPCommand(payloadData);
+      } else {
+        // If videoQueue is showing, we save this command as the next to be processed, overwriting any command that is queued before this
+        console.log(
+          `[listen] The videoQueue is still in process so we will queue this command.`,
+          payloadData
+        );
+        if (queuedCommand) {
+          console.log(
+            `[listen] Additionally, we will completely overwrite this previously queued command:`,
+            $state.snapshot(queuedCommand)
+          );
         }
-
-        // playVideo(videoTitle);
-
-        if (payloadData.IsScreenSaverOn) {
-          console.log(`IsScreenSaverOn = true so Going to show _screensaver video after the queue`);
-          showScreenSaverAfterQueue = true;
-        } else {
-          console.log(`IsScreenSaverOn = false so Going to show _select image after the queue`);
-          showScreenSaverAfterQueue = false;
-        }
-        startVideoQueue([`_intro`, ...videoTitles, `_outro`]);
-      } else if (payloadData.IsScreenSaverOn) {
-        console.log(`showing _screensaver right away`);
-        showScreenSaverAfterQueue = true;
-        showSelectImage = false;
-        startVideoQueue(['_screensaver']);
-      } else if (!payloadData.IsScreenSaverOn && !payloadData.AddedProduct) {
-        console.log(`showing _select image right away`);
-        displayImage(`_select`);
-        showSelectImage = true;
+        queuedCommand = payloadData;
       }
     });
+  };
+
+  const processUDPCommand = (payloadData) => {
+    if (payloadData.AddedProduct) {
+      // If there is an AddedProduct, we queue the `_intro`, ...videoTitles, `_outro` sequence
+
+      showSelectImage = false; // reset to false if ever it's been set as true before this
+
+      let videoTitles = [];
+      if (payloadData.Products && payloadData.Products.length > 0) {
+        console.log(`[processUDPCommand] payloadData.Products`, payloadData.Products);
+
+        videoTitles = payloadData.Products.map((product) => {
+          return product.ProductCode;
+        });
+        console.log(`[processUDPCommand] videoTitles`, videoTitles);
+      }
+
+      if (payloadData.IsScreenSaverOn) {
+        console.log(
+          `[processUDPCommand] IsScreenSaverOn = true so Going to show _screensaver video after the queue`
+        );
+        showScreenSaverAfterQueue = true;
+      } else {
+        console.log(
+          `[processUDPCommand] IsScreenSaverOn = false so Going to show _select image after the queue`
+        );
+        showScreenSaverAfterQueue = false;
+      }
+      startVideoQueue([`_intro`, ...videoTitles, `_outro`]);
+    } else if (payloadData.IsScreenSaverOn) {
+      // If there is no AddedProduct but there is an IsScreenSaverOn, show _screensaver right away
+
+      console.log(`[processUDPCommand] showing _screensaver right away`);
+      showScreenSaverAfterQueue = true;
+      showSelectImage = false;
+      playVideo('_screensaver');
+    } else if (!payloadData.IsScreenSaverOn && !payloadData.AddedProduct) {
+      // If there are no AddedProduct and IsScreenSaverOn, show _select image right away
+
+      console.log(`[processUDPCommand] showing _select image right away`);
+      displayImage(`_select`);
+      showSelectImage = true;
+    }
   };
 
   // Function to start playing a queue of videos
@@ -203,7 +242,7 @@
     console.log(`[startVideoQueue] titles`, titles);
     if (!titles.length) return;
     videoQueue = titles;
-    currentIndex = 0;
+    currentVideoIndex = 0;
     await playNextVideo();
   };
 
@@ -215,23 +254,33 @@
     console.log(
       '[playNextVideo] videoQueue and currentIndex',
       $state.snapshot(videoQueue),
-      $state.snapshot(currentIndex)
+      $state.snapshot(currentVideoIndex)
     );
-    if (currentIndex < videoQueue.length) {
-      const nextVideoTitle = videoQueue[currentIndex];
-      currentIndex++;
+    if (currentVideoIndex < videoQueue.length) {
+      const nextVideoTitle = videoQueue[currentVideoIndex];
+      currentVideoIndex++;
       await playVideo(nextVideoTitle);
     } else {
       // Queue finished!
-      console.log(
-        'All videos in the queue have been played. Going to play _screensaver or _select'
-      );
+      console.log('[playNextVideo] All videos in the queue have been played. ');
 
-      // videoMode = false;
-      if (showScreenSaverAfterQueue) {
+      // Reset videoQueue and currentVideoIndex
+      videoQueue = [];
+      currentVideoIndex = 0;
+
+      if (queuedCommand) {
+        console.log(
+          `[playNextVideo] There is a queued command so we will process this command now`,
+          $state.snapshot(queuedCommand)
+        );
+        processUDPCommand($state.snapshot(queuedCommand));
+        queuedCommand = undefined; // reset queuedCommand
+      } else if (showScreenSaverAfterQueue) {
+        console.log(`[playNextVideo] Will now show the screensaver`);
         await playVideo(`_screensaver`);
       } else {
         showSelectImage = true;
+        console.log(`[playNextVideo] Will now show the _select image`);
         await displayImage(`_select`);
       }
     }
@@ -253,12 +302,12 @@
     if (videoElement) {
       videoElement.src = URL.createObjectURL(blob);
 
-      console.log(`videoElement.src`, videoElement.src);
+      console.log(`[playVideo] videoElement.src`, videoElement.src);
 
       videoElement
         .play()
         .catch((err) => {
-          console.error('video playback error:', err);
+          console.error('[playVideo] video playback error:', err);
         })
         .then(() => {
           getCurrentWindow().setFullscreen(true);
@@ -280,14 +329,22 @@
     // Convert binary data to a Blob URL
     const blob = new Blob([new Uint8Array(file)], { type: 'image/jpeg' });
 
-    console.log(`file`, file);
+    console.log(`[displayImage] image file`, file);
     if (imageElement) {
-      console.log(`imageElement`, $state.snapshot(imageElement));
+      console.log(`[displayImage] imageElement`, $state.snapshot(imageElement));
       imageElement.src = URL.createObjectURL(blob);
       // console.log(`imageElement.src`, imageElement.src);
       getCurrentWindow().setFullscreen(true);
+
+      // 5 minute countdown
+      noCommandTimeout = setTimeout(() => {
+        console.log(`[displayImage] 5 minutes have passed so we will show _screensaver now`);
+        showSelectImage = false;
+        showScreenSaverAfterQueue = true;
+        playVideo(`_screensaver`);
+      }, 300000);
     } else {
-      console.log(`no imageElement`);
+      console.error(`[displayImage] no imageElement`);
     }
   };
 </script>
