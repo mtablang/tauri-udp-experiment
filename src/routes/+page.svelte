@@ -28,6 +28,8 @@
   let noCommandTimeout: number | undefined = $state();
   let queuedCommand = $state();
 
+  let currentlyPlayingVideo: string | undefined = $state();
+
   onMount(async () => {
     // Load settings from file
     await loadPreviousSettings();
@@ -123,7 +125,7 @@
   };
 
   /**
-   *   3 consecutive clicks of the hidden box should show the setup page
+   * 3 consecutive clicks of the hidden box should show the setup page
    */
   function handleBoxClick() {
     invisibleBoxClickCount++;
@@ -236,23 +238,32 @@
 
       if (payloadData.IsScreenSaverOn) {
         showLogWithTime(
-          `[processUDPCommand] IsScreenSaverOn = true so Going to show _screensaver video after the queue`
+          `%c [processUDPCommand] IsScreenSaverOn = true so going to show _screensaver video after the queue`,
+          `background: orange; color: black`
         );
         showScreenSaverAfterQueue = true;
       } else {
         showLogWithTime(
-          `[processUDPCommand] IsScreenSaverOn = false so Going to show _select image after the queue`
+          `%c [processUDPCommand] IsScreenSaverOn = false so going to show _select image after the queue`,
+          `background: orange; color: black`
         );
         showScreenSaverAfterQueue = false;
       }
       startVideoQueue([`_intro`, ...videoTitles, `_outro`]);
     } else if (payloadData.IsScreenSaverOn) {
       // If there is no AddedProduct but there is an IsScreenSaverOn, show _screensaver right away
-
-      showLogWithTime(`[processUDPCommand] showing _screensaver right away`);
-      showScreenSaverAfterQueue = true;
-      showSelectImage = false;
-      playVideo('_screensaver');
+      if (currentlyPlayingVideo != '_screensaver') {
+        showLogWithTime(`[processUDPCommand] showing _screensaver right away`);
+        showScreenSaverAfterQueue = true;
+        showSelectImage = false;
+        playVideo('_screensaver');
+      } else {
+        showLogWithTime(
+          `%c [processUDPCommand] attempted to show _screensaver right away but it's already showing! currentlyPlayingVideo = `,
+          `background: brown; color: white`,
+          currentlyPlayingVideo
+        );
+      }
     } else if (!payloadData.IsScreenSaverOn && !payloadData.AddedProduct) {
       // If there are no AddedProduct and IsScreenSaverOn, show _select image right away
 
@@ -296,7 +307,7 @@
 
       if (queuedCommand) {
         showLogWithTime(
-          `%c [playNextVideo] There is a queued command so we will process this command now`,
+          `%c [playNextVideo] There is a previously queued command that we will process now:`,
           'background: white; color: black',
           $state.snapshot(queuedCommand)
         );
@@ -341,6 +352,7 @@
         })
         .then(() => {
           getCurrentWindow().setFullscreen(true);
+          currentlyPlayingVideo = videoTitle;
         });
     }
   };
@@ -366,6 +378,7 @@
     if (imageElement) {
       showLogWithTime(`[displayImage] imageElement`, $state.snapshot(imageElement));
       imageElement.src = URL.createObjectURL(blob);
+      currentlyPlayingVideo = undefined;
       getCurrentWindow().setFullscreen(true);
 
       // 5 minute countdown
