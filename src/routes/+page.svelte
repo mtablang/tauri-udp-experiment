@@ -16,8 +16,8 @@
   let filesDirectory = $state('Downloads');
   let baseDir = $state(BaseDirectory.Download);
   // let videoDirectoryPath = $state('fms');
-  let videoElement: HTMLVideoElement; // Reference to the <video> element
-  let imageElement: HTMLImageElement; // Reference to the <img> element
+  let videoElement: HTMLVideoElement | undefined = $state(); // Reference to the <video> element
+  let imageElement: HTMLImageElement | undefined = $state(); // Reference to the <img> element
 
   let videoQueue: string[] = $state([]); // Array of video titles
   let currentVideoIndex = $state(0);
@@ -39,16 +39,24 @@
     getCurrentWindow().setFullscreen(true);
   });
 
+  const showLogWithTime = (...logs: unknown[]) => {
+    console.log(...logs, new Date());
+  };
+
+  const showErrorWithTime = (...logs: unknown[]) => {
+    console.error(...logs, new Date());
+  };
+
   /**
    * Read settings file saved in $HOME/.giving-machine
    */
   const loadPreviousSettings = async () => {
-    console.log(`[loadPreviousSettings]`);
+    showLogWithTime(`[loadPreviousSettings]`);
     const givingMachineSettingsFileContents = await readTextFile(`.giving-machine`, {
       baseDir: BaseDirectory.Home,
     });
 
-    console.log(
+    showLogWithTime(
       '[loadPreviousSettings] givingMachineSettingsFileContents',
       givingMachineSettingsFileContents
     );
@@ -122,7 +130,7 @@
     if (invisibleBoxClickCount === 3) {
       invisibleBoxClickCount = 0;
       showSetup();
-      console.log('Three-click event triggered!');
+      showLogWithTime('Three-click event triggered!');
     }
 
     // Reset count after 1 second of inactivity
@@ -136,7 +144,7 @@
   const finishSetup = async () => {
     const id = 'giving-machine';
 
-    console.log(
+    showLogWithTime(
       `[finishSetup] binding to ${$state.snapshot(broadcastAddress)}:${$state.snapshot(port)}`
     );
 
@@ -161,29 +169,46 @@
 
     // Listen to UDP commands
     await listen('plugin://udp', (message) => {
-      clearTimeout(noCommandTimeout);
-
       const payloadDataJSON = String.fromCharCode(...message.payload.data);
-      console.log(`[processUDPCommand] payloadDataJSON`, payloadDataJSON);
+      showLogWithTime(
+        `%c [listen] payloadDataJSON received!`,
+        `background: white; color: black`,
+        payloadDataJSON
+      );
       const payloadData = JSON.parse(payloadDataJSON)[0];
-      console.log(`[processUDPCommand] payloadData`, payloadData);
+      showLogWithTime(
+        `%c [listen] payloadData received!`,
+        `background: white; color: black`,
+        payloadData
+      );
+
+      if (noCommandTimeout) {
+        showLogWithTime(
+          `%c [listen] Clearing noCommandTimeout with id = ${noCommandTimeout} because we have received a message`,
+          `background: hotpink; color: black`
+        );
+        clearTimeout(noCommandTimeout);
+        noCommandTimeout = undefined;
+      }
 
       // Check if the videoQueue is currently being played first
       // If it's empty, process the command right away
       if (videoQueue.length == 0) {
-        console.log(
+        showLogWithTime(
           `[listen] The videoQueue is now empty so we will process this command right away.`,
           payloadData
         );
         processUDPCommand(payloadData);
       } else {
         // If videoQueue is showing, we save this command as the next to be processed, overwriting any command that is queued before this
-        console.log(
-          `[listen] The videoQueue is still in process so we will queue this command.`,
+        showLogWithTime(
+          `[listen] The videoQueue is still in process so we will queue this command. Showing videoQueue, currentVideoIndex, and the to be queued payloadData:`,
+          $state.snapshot(videoQueue),
+          $state.snapshot(currentVideoIndex),
           payloadData
         );
         if (queuedCommand) {
-          console.log(
+          showLogWithTime(
             `[listen] Additionally, we will completely overwrite this previously queued command:`,
             $state.snapshot(queuedCommand)
           );
@@ -201,21 +226,21 @@
 
       let videoTitles = [];
       if (payloadData.Products && payloadData.Products.length > 0) {
-        console.log(`[processUDPCommand] payloadData.Products`, payloadData.Products);
+        showLogWithTime(`[processUDPCommand] payloadData.Products`, payloadData.Products);
 
         videoTitles = payloadData.Products.map((product) => {
           return product.ProductCode;
         });
-        console.log(`[processUDPCommand] videoTitles`, videoTitles);
+        showLogWithTime(`[processUDPCommand] videoTitles`, videoTitles);
       }
 
       if (payloadData.IsScreenSaverOn) {
-        console.log(
+        showLogWithTime(
           `[processUDPCommand] IsScreenSaverOn = true so Going to show _screensaver video after the queue`
         );
         showScreenSaverAfterQueue = true;
       } else {
-        console.log(
+        showLogWithTime(
           `[processUDPCommand] IsScreenSaverOn = false so Going to show _select image after the queue`
         );
         showScreenSaverAfterQueue = false;
@@ -224,14 +249,14 @@
     } else if (payloadData.IsScreenSaverOn) {
       // If there is no AddedProduct but there is an IsScreenSaverOn, show _screensaver right away
 
-      console.log(`[processUDPCommand] showing _screensaver right away`);
+      showLogWithTime(`[processUDPCommand] showing _screensaver right away`);
       showScreenSaverAfterQueue = true;
       showSelectImage = false;
       playVideo('_screensaver');
     } else if (!payloadData.IsScreenSaverOn && !payloadData.AddedProduct) {
       // If there are no AddedProduct and IsScreenSaverOn, show _select image right away
 
-      console.log(`[processUDPCommand] showing _select image right away`);
+      showLogWithTime(`[processUDPCommand] showing _select image right away`);
       displayImage(`_select`);
       showSelectImage = true;
     }
@@ -239,7 +264,7 @@
 
   // Function to start playing a queue of videos
   const startVideoQueue = async (titles: string[]) => {
-    console.log(`[startVideoQueue] titles`, titles);
+    showLogWithTime(`[startVideoQueue] titles`, titles);
     if (!titles.length) return;
     videoQueue = titles;
     currentVideoIndex = 0;
@@ -251,8 +276,9 @@
    * If the queue has finished this will show the screensaver or the select image instead.
    */
   const playNextVideo = async () => {
-    console.log(
-      '[playNextVideo] videoQueue and currentIndex',
+    showLogWithTime(
+      '%c [playNextVideo] videoQueue and currentVideoIndex',
+      'background: gray; color: yellow',
       $state.snapshot(videoQueue),
       $state.snapshot(currentVideoIndex)
     );
@@ -262,25 +288,26 @@
       await playVideo(nextVideoTitle);
     } else {
       // Queue finished!
-      console.log('[playNextVideo] All videos in the queue have been played. ');
+      showLogWithTime('[playNextVideo] All videos in the queue have been played. ');
 
       // Reset videoQueue and currentVideoIndex
       videoQueue = [];
       currentVideoIndex = 0;
 
       if (queuedCommand) {
-        console.log(
-          `[playNextVideo] There is a queued command so we will process this command now`,
+        showLogWithTime(
+          `%c [playNextVideo] There is a queued command so we will process this command now`,
+          'background: white; color: black',
           $state.snapshot(queuedCommand)
         );
         processUDPCommand($state.snapshot(queuedCommand));
         queuedCommand = undefined; // reset queuedCommand
       } else if (showScreenSaverAfterQueue) {
-        console.log(`[playNextVideo] Will now show the screensaver`);
+        showLogWithTime(`[playNextVideo] Will now show the screensaver`);
         await playVideo(`_screensaver`);
       } else {
         showSelectImage = true;
-        console.log(`[playNextVideo] Will now show the _select image`);
+        showLogWithTime(`[playNextVideo] Will now show the _select image`);
         await displayImage(`_select`);
       }
     }
@@ -291,7 +318,10 @@
    * @param videoTitle
    */
   const playVideo = async (videoTitle: string) => {
-    console.log(`[playVideo] Now gonna play ${videoTitle}`);
+    showLogWithTime(
+      `%c [playVideo] Now gonna play ${videoTitle}`,
+      'background: yellow; color: black'
+    );
     const file = await readFile(`${videoTitle}.mp4`, {
       baseDir: baseDir,
     });
@@ -302,12 +332,12 @@
     if (videoElement) {
       videoElement.src = URL.createObjectURL(blob);
 
-      console.log(`[playVideo] videoElement.src`, videoElement.src);
+      showLogWithTime(`[playVideo] videoElement.src`, videoElement.src);
 
       videoElement
         .play()
         .catch((err) => {
-          console.error('[playVideo] video playback error:', err);
+          showErrorWithTime('[playVideo] video playback error:', err);
         })
         .then(() => {
           getCurrentWindow().setFullscreen(true);
@@ -320,7 +350,10 @@
    * @param imageTitle
    */
   const displayImage = async (imageTitle: string) => {
-    console.log(`[displayImage] Now gonna display image ${imageTitle}`);
+    showLogWithTime(
+      `%c [displayImage] Now gonna display image ${imageTitle}`,
+      `background: blue; color: white`
+    );
 
     const file = await readFile(`${imageTitle}.jpg`, {
       baseDir: baseDir,
@@ -329,22 +362,28 @@
     // Convert binary data to a Blob URL
     const blob = new Blob([new Uint8Array(file)], { type: 'image/jpeg' });
 
-    console.log(`[displayImage] image file`, file);
+    showLogWithTime(`[displayImage] image file`, file);
     if (imageElement) {
-      console.log(`[displayImage] imageElement`, $state.snapshot(imageElement));
+      showLogWithTime(`[displayImage] imageElement`, $state.snapshot(imageElement));
       imageElement.src = URL.createObjectURL(blob);
-      // console.log(`imageElement.src`, imageElement.src);
       getCurrentWindow().setFullscreen(true);
 
       // 5 minute countdown
       noCommandTimeout = setTimeout(() => {
-        console.log(`[displayImage] 5 minutes have passed so we will show _screensaver now`);
+        showLogWithTime(
+          `%c [displayImage] For timeout id = ${noCommandTimeout}, 5 minutes have passed so we will show _screensaver now`,
+          `background: hotpink; color: white`
+        );
         showSelectImage = false;
         showScreenSaverAfterQueue = true;
         playVideo(`_screensaver`);
       }, 300000);
+      showLogWithTime(
+        `%c [displayImage] Starting noCommandTimeout with id = ${noCommandTimeout} now`,
+        `background: hotpink; color: white`
+      );
     } else {
-      console.error(`[displayImage] no imageElement`);
+      showErrorWithTime(`[displayImage] no imageElement`);
     }
   };
 </script>
